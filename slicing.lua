@@ -2,9 +2,15 @@ local msg = require "mp.msg"
 local utils = require "mp.utils"
 local options = require "mp.options"
 
+-- TODO make things more like this one : https://github.com/snylonue/mpv_slicing_copy/blob/master/slicing_copy.lua
+-- e.g: use subprocess instead of execute
+
 local cut_pos = nil
 local copy_audio = true
-local o = {
+
+
+-- original super RAW settings (montruously heavy weight video).
+--[[ local o = {
     target_dir = "~",
     vcodec = "rawvideo",
     acodec = "pcm_s16le",
@@ -19,15 +25,65 @@ local o = {
         -ss $shift -i "$in" -t $duration
         -c:v $vcodec -c:a $acodec $audio
         -vf $prevf$vf$postvf $opts "$out.$ext"
+    #!--need two closing bracket here --,
+}]]
+
+
+-- Copy original stream
+--[[ local o = {
+    target_dir = "~",
+    vcodec = "copy",
+    acodec = "copy",
+    prevf = "",
+    vf = "", 
+    hqvf = "",
+    postvf = "",
+    opts = "",
+    ext = "mp4",--need to check extension
+    -- ext = "avi",
+    command_template = [[
+        ffmpeg -v warning -y -stats
+        -ss $shift -i "$in" -t $duration
+        -c:v $vcodec -c:a $acodec $audio
+        "$out.$ext"
+    #!--need two closing bracket here --,
+} ]]
+
+-- Reencode to mp4
+local o = {
+    target_dir = "~",
+    vcodec = "",-- add custom reencode settings here and add the $vcodec in template (basic mp4 settings is pretty good already)
+    acodec = "",
+    prevf = "",
+    vf = "", 
+    hqvf = "",
+    postvf = "",
+    opts = "",
+    ext = "mp4",
+    -- ext = "avi",
+    command_template = [[
+        ffmpeg -v warning -y -stats
+        -ss $shift -i "$in" -t $duration
+        $audio "$out.$ext"
     ]],
 }
+
 options.read_options(o)
 
 function timestamp(duration)
     local hours = duration / 3600
     local minutes = duration % 3600 / 60
     local seconds = duration % 60
-    return string.format("%02d:%02d:%02.03f", hours, minutes, seconds)
+    return string.format("%02d_%02d_%02.03f", hours, minutes, seconds)
+    --return string.format("%02d:%02d:%02.03f", hours, minutes, seconds)
+end
+
+function timestamp_sec_round(duration)
+    local hours = duration / 3600
+    local minutes = duration % 3600 / 60
+    local seconds = duration % 60
+    return string.format("%02d_%02d_%02.0f", hours, minutes, seconds)
+    --return string.format("%02d:%02d:%02.03f", hours, minutes, seconds)
 end
 
 function osd(str)
@@ -42,7 +98,8 @@ end
 
 function log(str)
     local logpath = utils.join_path(
-        o.target_dir:gsub("~", get_homedir()),
+        -- o.target_dir:gsub("~", get_homedir()),
+        mp.get_property("working-directory"),
         "mpv_slicing.log")
     f = io.open(logpath, "a")
     f:write(string.format("# %s\n%s\n",
@@ -55,7 +112,9 @@ function escape(str)
     -- FIXME(Kagami): This escaping is NOT enough, see e.g.
     -- https://stackoverflow.com/a/31413730
     -- Consider using `utils.subprocess` instead.
-    return str:gsub("\\", "\\\\"):gsub('"', '\\"')
+
+    -- return str:gsub("\\", "\\\\"):gsub('"', '\\"')
+    return str:gsub("\\", "/"):gsub('"', '\\"')
 end
 
 function trim(str)
@@ -80,7 +139,8 @@ function get_outname(shift, endpos)
     if dotidx then name = name:sub(1, -dotidx-1) end
     name = name:gsub(" ", "_")
     name = name:gsub(":", "-")
-    name = name .. string.format(".%s-%s", timestamp(shift), timestamp(endpos))
+    -- name = name .. string.format(".%s-%s", timestamp_sec_round(shift), timestamp_sec_round(endpos))-- separate time wth a dot
+    name = name .. string.format("-%s-%s", timestamp_sec_round(shift), timestamp_sec_round(endpos))-- separate time with a dash
     return name
 end
 
@@ -90,7 +150,8 @@ function cut(shift, endpos)
         utils.getcwd(),
         mp.get_property("stream-path")))
     local outpath = escape(utils.join_path(
-        o.target_dir:gsub("~", get_homedir()),
+        -- o.target_dir:gsub("~", get_homedir()),
+        mp.get_property("working-directory"),
         get_outname(shift, endpos)))
 
     cmd = cmd:gsub("$shift", shift)
@@ -104,6 +165,7 @@ function cut(shift, endpos)
     cmd = cmd:gsub("$postvf", o.postvf)
     cmd = cmd:gsub("$matrix", get_csp())
     cmd = cmd:gsub("$opts", o.opts)
+    
     -- Beware that input/out filename may contain replacing patterns.
     cmd = cmd:gsub("$ext", o.ext)
     cmd = cmd:gsub("$out", outpath)
