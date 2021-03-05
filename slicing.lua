@@ -2,11 +2,15 @@ local msg = require "mp.msg"
 local utils = require "mp.utils"
 local options = require "mp.options"
 
+-- v1.1
+
 -- TODO make things more like this one : https://github.com/snylonue/mpv_slicing_copy/blob/master/slicing_copy.lua
 -- e.g: use subprocess instead of execute
 
 local cut_pos = nil
-local copy_audio = true
+local copy_audio = 0
+-- iterate on tree modes
+-- 0 'normal' (video+audio), 1 'only_audio' (mp3), 2 'no_audio' (video)
 
 
 -- original super RAW settings (montruously heavy weight video).
@@ -158,7 +162,7 @@ function cut(shift, endpos)
     cmd = cmd:gsub("$duration", endpos - shift)
     cmd = cmd:gsub("$vcodec", o.vcodec)
     cmd = cmd:gsub("$acodec", o.acodec)
-    cmd = cmd:gsub("$audio", copy_audio and "" or "-an")
+    cmd = cmd:gsub("$audio", copy_audio < 2 and "" or "-an")
     cmd = cmd:gsub("$prevf", o.prevf)
     cmd = cmd:gsub("$vf", o.vf)
     cmd = cmd:gsub("$hqvf", o.hqvf)
@@ -167,7 +171,7 @@ function cut(shift, endpos)
     cmd = cmd:gsub("$opts", o.opts)
     
     -- Beware that input/out filename may contain replacing patterns.
-    cmd = cmd:gsub("$ext", o.ext)
+    cmd = cmd:gsub("$ext", copy_audio == 1 and "mp3" or o.ext)
     cmd = cmd:gsub("$out", outpath)
     cmd = cmd:gsub("$in", inpath, 1)
 
@@ -199,8 +203,19 @@ function toggle_mark()
 end
 
 function toggle_audio()
-    copy_audio = not copy_audio
-    osd("Audio capturing is " .. (copy_audio and "enabled" or "disabled"))
+    if copy_audio == 0 then
+        copy_audio = 1
+        osd("Audio Only")
+        -- osd("Audio capturing : " .. (copy_audio and "enabled" or "disabled"))
+    elseif copy_audio == 1 then
+        copy_audio = 2
+        osd("Audio Disabled")
+    else
+        copy_audio = 0
+        osd("Audio Enabled")
+    end
+
+        
 end
 
 mp.add_key_binding("c", "slicing_mark", toggle_mark)
