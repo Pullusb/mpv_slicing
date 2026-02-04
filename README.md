@@ -27,6 +27,9 @@ Press `c` first time to mark the start of the fragment. Press it again to mark t
 
 Press `a` to cycle between `normal`, `audio only` (_mp3_) and `no audio` exports.
 
+Press `C` (`Shift + c`) : Toggle modes between `copy stream` or `reencode` (default).  
+Copy stream is not precise (snap to closest key-frame) but is almost instantaneous as the video and audio streams are untouched. Also, it preserve original extension to avoid codec compatibility issues.
+
 You could change key bindings and all parameters of the output video by editing your `input.conf` and `lua-settings/slicing.conf`, see [slicing.lua](https://github.com/Kagami/mpv_slicing/blob/master/slicing.lua) for details.
 
 #### License

@@ -1,19 +1,13 @@
 local msg = require "mp.msg"
 local utils = require "mp.utils"
 local options = require "mp.options"
--- 1.4
 
--- a : Cycle Audio only, no audio, normal
--- c : Mark start and end (marking end starts the encoding)
--- Shift+C : toggle copy mode (preserve original extension in copy mode to avoid codec compatibility issues)
+-- v1.2 - Updated to use subprocess instead of os.execute
 
 local cut_pos = nil
 local copy_audio = 0
 -- iterate on three modes
 -- 0 'normal' (video+audio), 1 'only_audio' (mp3), 2 'no_audio' (video)
-
-local copy_stream = false
--- false = reencode, true = copy stream (faster, no quality loss)
 
 -- Reencode to mp4
 local o = {
@@ -59,15 +53,6 @@ function log(str)
     f:close()
 end
 
-function get_source_ext()
-    local name = mp.get_property("filename")
-    local dotidx = name:reverse():find(".", 1, true)
-    if dotidx then
-        return name:sub(-dotidx + 1)
-    end
-    return o.ext  -- fallback to configured extension
-end
-
 function get_outname(shift, endpos)
     local name = mp.get_property("filename")
     local dotidx = name:reverse():find(".", 1, true)
@@ -78,21 +63,6 @@ function get_outname(shift, endpos)
     return name
 end
 
-function get_output_ext()
-    -- Audio only mode always outputs mp3
-    if copy_audio == 1 then
-        return "mp3"
-    end
-    
-    -- In copy mode, preserve original extension to avoid codec compatibility issues
-    if copy_stream then
-        return get_source_ext()
-    end
-    
-    -- Reencode mode uses configured extension
-    return o.ext
-end
-
 function cut(shift, endpos)
     local inpath = utils.join_path(
         utils.getcwd(),
@@ -101,7 +71,7 @@ function cut(shift, endpos)
         mp.get_property("working-directory"),
         get_outname(shift, endpos))
     
-    local ext = get_output_ext()
+    local ext = copy_audio == 1 and "mp3" or o.ext
     local outfile = outpath .. "." .. ext
     
     local args = {
@@ -114,26 +84,16 @@ function cut(shift, endpos)
         "-t", tostring(endpos - shift),
     }
     
-    -- Stream copy mode or reencode
-    if copy_stream and copy_audio ~= 1 then
-        -- Copy stream (fast, no quality loss)
+    -- Add video codec if specified
+    if o.vcodec ~= "" then
         table.insert(args, "-c:v")
-        table.insert(args, "copy")
+        table.insert(args, o.vcodec)
+    end
+    
+    -- Add audio codec if specified
+    if o.acodec ~= "" then
         table.insert(args, "-c:a")
-        table.insert(args, "copy")
-    else
-        -- Reencode mode
-        -- Add video codec if specified
-        if o.vcodec ~= "" then
-            table.insert(args, "-c:v")
-            table.insert(args, o.vcodec)
-        end
-        
-        -- Add audio codec if specified
-        if o.acodec ~= "" then
-            table.insert(args, "-c:a")
-            table.insert(args, o.acodec)
-        end
+        table.insert(args, o.acodec)
     end
     
     -- Audio handling
@@ -158,8 +118,7 @@ function cut(shift, endpos)
     msg.info(cmd_str)
     log(cmd_str)
     
-    local mode_str = copy_stream and "[COPY] " or "[REENCODE] "
-    osd(mode_str .. "Encoding started...")
+    osd("Encoding started...")
     
     mp.command_native_async({
         name = "subprocess",
@@ -226,15 +185,5 @@ function toggle_audio()
     end
 end
 
-function toggle_copy_stream()
-    copy_stream = not copy_stream
-    if copy_stream then
-        osd("Stream Copy: ON (fast, keeps original container)")
-    else
-        osd("Stream Copy: OFF (reencode to " .. o.ext .. ")")
-    end
-end
-
 mp.add_key_binding("c", "slicing_mark", toggle_mark)
 mp.add_key_binding("a", "slicing_audio", toggle_audio)
-mp.add_key_binding("C", "slicing_copy_stream", toggle_copy_stream)
